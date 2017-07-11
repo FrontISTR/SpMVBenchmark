@@ -1,71 +1,77 @@
-      program main
+program main
 
-      use omp_lib
-      implicit none
+use omp_lib
+implicit none
 
-      integer :: div
-      double precision :: startTime, endTime,startTime2, endTime2, sum, sum0, sum1, sum2, gflops
+integer :: div
+double precision :: startTime, endTime,startTime2, endTime2, sum, sum0, sum1, sum2, gflops
+character :: arg*10
 
 ! node coordinate
-      integer :: x1, y1, z1
-      integer :: x2, y2, z2
+integer :: x1, y1, z1
+integer :: x2, y2, z2
 
 ! SpMV iteration times
-      integer, parameter :: itermax = 100 ! number of SpMV
+integer, parameter :: itermax = 256 ! number of SpMV
 
 ! Matrix
-      integer, parameter :: nnodes_edge =  64   ! number of nodes on a edge of cube
-      real(8), parameter :: mev         =  1.2d0 ! value of matrix element
-      real(8), parameter :: vev         = 10.2d0 ! value of vector element
+integer :: nnodes_edge =  100   ! number of nodes on a edge of cube
+real(8), parameter :: mev         =  1.2d0 ! value of matrix element
+real(8), parameter :: vev         = 10.2d0 ! value of vector element
 
-      integer(8) :: ncols, nnz
-      integer(8) :: matdim
-      integer(8) :: nne, nne2
+integer(8) :: ncols, nnz
+integer(8) :: matdim
+integer(8) :: nne, nne2
 
-      integer(8),    pointer :: irow(:)
-      integer(8),    pointer :: jcol(:)
-      real(8),    pointer :: val(:)
+integer(8),    pointer :: irow(:)
+integer(8),    pointer :: jcol(:)
+real(8),    pointer :: val(:)
 
 ! Vector
 
-      real(8),    pointer :: X(:) ! given vector
+real(8),    pointer :: X(:) ! given vector
 
-      real(8),    pointer :: y(:)     ! result (Ab=y)
+real(8),    pointer :: y(:)     ! result (Ab=y)
 
 ! CRS format
-      integer(8) :: row
-  integer ti1, ti2, t_rate, t_max, diff
+integer(8) :: row
+integer ti1, ti2, t_rate, t_max, diff
 
-  real(kind=8) :: START_TIME, END_TIME, Tcomm
-  integer(kind=8) :: i, j, jS, jE, in
-  real(kind=8) :: YV1, YV2, YV3, XV1, XV2, XV3
+real(kind=8) :: START_TIME, END_TIME, Tcomm
+integer(kind=8) :: i, j, jS, jE, in
+real(kind=8) :: YV1, YV2, YV3, XV1, XV2, XV3
 
-  integer(kind=8) :: N, NP
-  integer(kind=8), pointer :: indexL(:), itemL(:), indexU(:), itemU(:)
-  real(kind=8), pointer :: AL(:), AU(:), D(:)
+integer(kind=8) :: N, NP
+integer(kind=8), pointer :: indexL(:), itemL(:), indexU(:), itemU(:)
+real(kind=8), pointer :: AL(:), AU(:), D(:)
 
-  integer,       parameter :: coef_block = 9     ! BCSR parameter : number of element in a block (fix to 9)
-  integer,       parameter :: vec_coef_block = 3 ! BCSR parameter : number of element in a block (fix to 9)
-  integer, parameter :: numOfBlockPerThread = 100
-  logical, save :: isFirst = .true.
-  integer, save :: numOfThread = 1
-  integer, save, allocatable :: startPos(:), endPos(:)
-  integer(kind=8), save :: sectorCacheSize0, sectorCacheSize1
-  integer(kind=8) :: threadNum, blockNum, numOfBlock
-  integer(kind=8) :: numOfElement, elementCount, blockIndex
-  real(kind=8) :: numOfElementPerBlock
+integer,       parameter :: coef_block = 9     ! BCSR parameter : number of element in a block (fix to 9)
+integer,       parameter :: vec_coef_block = 3 ! BCSR parameter : number of element in a block (fix to 9)
+integer, parameter :: numOfBlockPerThread = 100
+logical, save :: isFirst = .true.
+integer, save :: numOfThread = 1
+integer, save, allocatable :: startPos(:), endPos(:)
+integer(kind=8), save :: sectorCacheSize0, sectorCacheSize1
+integer(kind=8) :: threadNum, blockNum, numOfBlock
+integer(kind=8) :: numOfElement, elementCount, blockIndex
+real(kind=8) :: numOfElementPerBlock
 
 ! elap time
-      real(4) :: etime, tarray(2), t1, t2, tsum
+real(4) :: etime, tarray(2), t1, t2, tsum
 
 !
-      integer(8) :: k,l,iter,i2,i3
+integer(8) :: k,l,iter,i2,i3
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! create matrix A
 !
 !
+
+if(iargc()>0)then 
+   call getarg( 1, arg )
+   read(arg,*) nnodes_edge
+end if
 
 nne  = nnodes_edge
 nne2 = nnodes_edge * nnodes_edge
@@ -609,63 +615,49 @@ end if
  end do
 
 t2 = etime(tarray) ! TIMER
-!write(*,*) 'user time for create irow jcol matrix (sec)', t2-t1 !TIMER
 write(*,"(a30,f13.4,a)") 'create irow jcol matrix ',t2-t1," sec" !DEBUG
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!      write(*,*) 'Now making CRS format'
-!
 
-t1 = etime(tarray) ! TIMER
-      allocate(indexL(0:N)) 
-      allocate(itemL(nnz))
-      allocate(AL(nnz*coef_block))
-      
-      indexL(0) = 0
+  t1 = etime(tarray) ! TIMER
+  allocate(indexL(0:N)) 
+  allocate(itemL(nnz))
+  allocate(AL(nnz*coef_block))
 
-      row = 1 
-      do i=1,nnz
-! matrix format error check
-        if (row > irow(i)) then
-          write(*,*) 'ERROR: row is not sorted' 
-          stop
-        end if
-        if (row < irow(i)-1) then
-          write(*,*) 'ERROR: vacant row' 
-          stop
-        end if
+  indexL(0) = 0
 
-! new row?
-        if (row == irow(i)-1) then 
-          indexL(row) = i-1
-        end if
+  row = 1 
+  do i=1,nnz
+  ! matrix format error check
+    if (row > irow(i)) then
+      write(*,*) 'ERROR: row is not sorted' 
+      stop
+    end if
+    if (row < irow(i)-1) then
+      write(*,*) 'ERROR: vacant row' 
+      stop
+    end if
 
-        row = irow(i)
-        itemL(i) = jcol(i) 
+  ! new row?
+    if (row == irow(i)-1) then 
+      indexL(row) = i-1
+    end if
 
-! set block csr val
-        AL(9*i-8)  = mev*i+1
-        AL(9*i-7)  = mev*i+2
-        AL(9*i-6)  = mev*i+3
-        AL(9*i-5)  = mev*i+4
-        AL(9*i-4)  = mev*i+5
-        AL(9*i-3)  = mev*i+6
-        AL(9*i-2)  = mev*i+7
-        AL(9*i-1)  = mev*i+8
-        AL(9*i  )  = mev*i+9
-      end do
+    row = irow(i)
+    itemL(i) = jcol(i) 
+
+  ! set block csr val
+    AL(9*i-8)  = mev*i+1
+    AL(9*i-7)  = mev*i+2
+    AL(9*i-6)  = mev*i+3
+    AL(9*i-5)  = mev*i+4
+    AL(9*i-4)  = mev*i+5
+    AL(9*i-3)  = mev*i+6
+    AL(9*i-2)  = mev*i+7
+    AL(9*i-1)  = mev*i+8
+    AL(9*i  )  = mev*i+9
+  end do
       indexL(N)=nnz 
 
-!      write(*,*) 'test: now write CRS format'   ! DEBUG
-!      do i = 1, N   ! DEBUG
-!        jS = indexL(i-1)+1   ! DEBUG
-!        jE = indexL(i)   ! DEBUG
-!        do j=jS, jE    ! DEBUG
-!          write(*,*) 'row:',i,' column:',itemL(j)   ! DEBUG 
-!          write(*,*) 'AL',AL(9*j-8),AL(9*j-7),AL(9*j-6),AL(9*j-5),AL(9*j-4),AL(9*j-3),AL(9*j-2),AL(9*j-1),AL(9*j) ! DEBUG
-!        end do   ! DEBUG
-!      end do   ! DEBUG
 
 t2 = etime(tarray) ! TIMER
 !write(*,*) 'user time for create CSR matrix (sec)', t2-t1 !TIMER
@@ -677,34 +669,26 @@ write(*,"(a30,f13.4,a)") 'Create CSR matrix ',t2-t1, " sec" !DEBUG
 !
 
 t1 = etime(tarray) ! TIMER
-      allocate(X(N*vec_coef_block))
+allocate(X(N*vec_coef_block))
 
-      do i=1, N*vec_coef_block
-        X(i) = vev
-      end do
+do i=1, N*vec_coef_block
+  X(i) = vev
+end do
 !write(*,*) 'X ',X !DEBUG
 
 t2 = etime(tarray) ! TIMER
-!write(*,*) 'user time for create vector b (sec)', t2-t1 !TIMER
 write(*,"(a30,f13.4,a)") 'Create vector b ', t2-t1, " sec"
 
-      !write(*,*) 'size of vector is ', ncols
 write(*,"(a30,i13,a)") 'Length of vector ', ncols
-write(*,"(a30,i13,a)") 'Size of vector ', ncols*8/1024**2 , " MB"
+write(*,"(a30,i13,a)") 'Size of vector ', vec_coef_block*ncols*8/1024**2 , " MB"
 
-    !  write(*,*) 'number of non-zero element is ', nnz * coef_block
 write(*,"(a30,i13)") 'Num of non-zero elem. ', nnz * coef_block
 write(*,"(a30,i13,a)") 'Size of non-zero elem. ', nnz * coef_block * 8/1024**2, " MB"
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-! matrix vector product
-!
-!      write(*,*) 'Now doing SpMV calculation ', itermax, 'times.'
 write(*,"(a30,i13)") 'Num of SpMV iteration ', itermax
 
-      allocate(y(N*vec_coef_block))
-      tsum=0
+allocate(y(N*vec_coef_block))
+tsum=0
 
       
       
@@ -828,7 +812,7 @@ call system_clock(ti2, t_rate)
       write(*,"(a30,f13.4,a)") 'Time for only part of SpMV ', tsum, " sec"
 
       gflops = (((nnz*(2.0*coef_block)*itermax)/div)/tsum)/(10.0**9.0)
-      write(*,"(a30,f13.4,a)") 'Performance:   ', gflops, ' GFLOP/s'
+      write(*,"(a30,f13.4,a)") 'Performance:   ', gflops, ' GFLOPS'
 
       gflops = (((nnz*(8*coef_block+8+8*2*3)*itermax)/div)/tsum)/(10.0**9.0)
       write(*,"(a30,f13.4,a)") 'Memory(Cache) throughput:   ', gflops, ' GB/s'
