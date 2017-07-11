@@ -752,6 +752,7 @@ call system_clock(ti1)
 
 
     do iter=1, itermax
+!$omp barrier
       startTime2 = omp_get_wtime()
 
       !t1 = etime(tarray)
@@ -764,7 +765,7 @@ call system_clock(ti1)
       end do
       endTime2 = omp_get_wtime()
       sum2 = sum2 + (endTime2 - startTime2)
-      
+!$omp barrier
       startTime = omp_get_wtime()
 
       YV1 = 0.0d0
@@ -792,6 +793,7 @@ call system_clock(ti1)
       enddo
       endTime = omp_get_wtime()
       sum = sum + (endTime - startTime)
+!$omp barrier
       
     end do
     
