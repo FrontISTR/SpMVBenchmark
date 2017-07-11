@@ -24,16 +24,16 @@ function do_test () {
     echo $time1
 }
 
-for i in `seq 1 4`; do
+for i in `seq 1 $RCORE`; do
     OMP=$i
     do_test $OMP
 done
 
-for i in `seq 1 10`; do
-  OMP=$(( $i*$RCORE / 10 ))
-  if [ $OMP -le 4 ] ; then
-    continue
-  fi 
-  do_test $OMP
-done
+#for i in `seq 1 10`; do
+#  OMP=$(( $i*$RCORE / 10 ))
+#  if [ $OMP -le 4 ] ; then
+#    continue
+#  fi 
+#  do_test $OMP
+#done
 
